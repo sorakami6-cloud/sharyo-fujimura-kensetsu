@@ -36,7 +36,7 @@ const db = initializeFirestore(fbApp, { localCache: persistentLocalCache({ tabMa
 const storage = getStorage(fbApp);
 
 /* ---------- 定数 ---------- */
-const APP_VERSION = "29"; // 版の番号（名前のメニューの下に出す）。app/sw.js・shop/sw.js の CACHE（fujimura-app-v○○・fujimura-shop-v○○）と同じ番号にする
+const APP_VERSION = "30"; // 版の番号（名前のメニューの下に出す）。app/sw.js・shop/sw.js の CACHE（fujimura-app-v○○・fujimura-shop-v○○）と同じ番号にする
 const TYPES = ["トラック", "バン", "普通車"];
 const SHOP_NAME = COMPANY.shopName || "整備工場"; // 整備工場の名前。専用ページは shop/
 // 見本か。見本では、サンプルの車も空き表・整備工場の画面に出す（会社用では出さない）
@@ -1590,9 +1590,27 @@ function closeModal() {
 
 /* ---------- 設定（PCのみ） ---------- */
 const LOT_MAX = 5; // 駐車場は5ヶ所まで（空欄は使わない）
+// 設定の「現場リスト」「駐車場」の1行（名前の欄と × ）。駐車場は前の名前も持っておく（名前を変えたら車の置き場所も直すため）
+const itemRow = (kind, name) => `<div class="irow"><input name="${kind}" value="${esc(name)}" maxlength="${kind === "lot" ? 30 : 100}" autocomplete="off" aria-label="${kind === "lot" ? "駐車場" : "現場"}の名前">${kind === "lot" ? `<input type="hidden" name="lotOld" value="${esc(name)}">` : ""}<button type="button" class="x" data-act="itemDel" aria-label="消す">×</button></div>`;
+function itemAdd(kind) {
+  const inp = $(`${kind}-new`), box = $(`${kind}-list`), name = inp.value.trim();
+  const showErr = t => { const e = $("ferr"); e.textContent = t; e.hidden = false; e.scrollIntoView({ block: "nearest" }); };
+  if (!name) { inp.focus(); return; }
+  const have = [...box.querySelectorAll(`input[name="${kind}"]`)].map(x => x.value.trim());
+  if (have.includes(name)) return showErr(`「${name}」はもうあります`);
+  if (kind === "lot" && have.filter(Boolean).length >= LOT_MAX) return showErr(`駐車場は${LOT_MAX}ヶ所までです`);
+  box.insertAdjacentHTML("beforeend", itemRow(kind, name).replace(/<input type="hidden" name="lotOld" value="[^"]*">/, `<input type="hidden" name="lotOld" value="">`));
+  inp.value = ""; $("ferr").hidden = true;
+  if (kind === "lot") $("lot-add").hidden = have.filter(Boolean).length + 1 >= LOT_MAX;
+  box.scrollTop = box.scrollHeight; inp.focus();
+}
+function itemDel(btn) {
+  const row = btn.closest(".irow"), lot = !!row.querySelector('input[name="lot"]');
+  row.remove();
+  if (lot) $("lot-add").hidden = $("lot-list").querySelectorAll('input[name="lot"]').length >= LOT_MAX;
+}
 function openSettings() {
   const st = S.settings;
-  const lines = a => esc((a || []).join("\n"));
   const lots = [...(st.lots || [])].slice(0, LOT_MAX); while (lots.length < LOT_MAX) lots.push("");
   modalId = null;
   $("modal").innerHTML = `<div class="overlay"><form class="modal panel" id="sform" novalidate>
@@ -1620,12 +1638,16 @@ function openSettings() {
           <input id="madd-shozoku" placeholder="所属（例：${esc(COMPANY.name || "")}）" maxlength="30" autocomplete="off" aria-label="所属">
           <button type="button" class="btn ghost small" data-act="memAdd">＋ 1人追加</button>
         </div></div>
-      <div class="field"><label for="s-sites">現場リスト</label>
-        <textarea id="s-sites" name="sites" rows="6">${lines(st.sites)}</textarea>
-        <div class="hint">1行に1つ。予約の「行く現場」に出ます（リストにない現場は「その他」で入力できます）</div></div>
+      <div class="field"><label>現場リスト</label>
+        <div class="ilist" id="site-list">${(st.sites || []).map(x => itemRow("site", x)).join("")}</div>
+        <div class="iadd"><input id="site-new" placeholder="新しい現場の名前" maxlength="100" autocomplete="off" aria-label="新しい現場の名前">
+          <button type="button" class="btn ghost small" data-act="itemAdd" data-val="site">＋ 新しく追加</button></div>
+        <div class="hint">予約の「行く現場」に出ます（リストにない現場は「その他」で入力できます）。名前はそのまま書きかえられます</div></div>
       <div class="field"><label>駐車場（${LOT_MAX}ヶ所まで）</label>
-        <div class="lots-in">${lots.map((l, i) => `<input name="lot${i}" value="${esc(l)}" aria-label="駐車場${i + 1}" maxlength="30" autocomplete="off">`).join("")}</div>
-        <div class="hint">返却のときのボタンに、入っている駐車場だけが出ます（空欄は使いません。1ヶ所は必要）。名前を変えると、その駐車場にある車の置き場所も新しい名前になります</div></div>
+        <div class="ilist" id="lot-list">${lots.filter(Boolean).map(x => itemRow("lot", x)).join("")}</div>
+        <div class="iadd" id="lot-add"${lots.filter(Boolean).length >= LOT_MAX ? " hidden" : ""}><input id="lot-new" placeholder="新しい駐車場の名前" maxlength="30" autocomplete="off" aria-label="新しい駐車場の名前">
+          <button type="button" class="btn ghost small" data-act="itemAdd" data-val="lot">＋ 新しく追加</button></div>
+        <div class="hint">返却のときのボタンに出ます（1ヶ所は必要）。名前を変えると、その駐車場にある車の置き場所も新しい名前になります</div></div>
       <div class="field"><label for="s-days">車検の通知（何日前から）</label>
         <div class="days-in"><input id="s-days" name="shakenAlertDays" type="number" inputmode="numeric" min="1" max="365" value="${esc(st.shakenAlertDays || 30)}"><span>日前から</span></div>
         <div class="hint">スマホの車両カードに「🔔 車検」が出始める日数です（はじめは30日）</div></div>
@@ -1777,20 +1799,23 @@ async function importFromNippo() {
 
 function saveSettings(form) {
   const f = new FormData(form);
-  const list = k => [...new Set(String(f.get(k) || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean))];
-  const sites = list("sites").map(x => x.slice(0, 100));
-  const slots = Array.from({ length: LOT_MAX }, (_, i) => String(f.get(`lot${i}`) || "").trim()); // 欄ごとの値（空欄あり）
+  // 「新しく追加」の欄に書いたまま保存したときも、足してから保存する
+  ["site", "lot"].forEach(k => { const n = $(`${k}-new`); if (n && n.value.trim()) itemAdd(k); });
+  const all = k => [...form.querySelectorAll(`input[name="${k}"]`)].map(x => x.value.trim());
+  const sites = [...new Set(all("site").filter(Boolean))].map(x => x.slice(0, 100));
+  const slots = all("lot"), olds = all("lotOld"); // 行ごとの今の名前と、開いたときの名前（新しく足した行は空）
   const lots = slots.filter(Boolean);
   const days = Number(toHalf(String(f.get("shakenAlertDays") || "")));
   let err = "";
   if (!lots.length) err = "駐車場を1ヶ所以上入れてください";
+  else if (lots.length > LOT_MAX) err = `駐車場は${LOT_MAX}ヶ所までです`;
   else if (new Set(lots).size < lots.length) err = "同じ名前の駐車場があります";
   else if (!Number.isInteger(days) || days < 1 || days > 365) err = "車検の通知は 1〜365 の数字で入れてください";
   if (err) { const e = $("ferr"); e.textContent = err; e.hidden = false; return; }
 
   // 駐車場の名前を変えたら（同じ欄で名前が変わったら）、その名前の車の「置き場所」も書きかえる
   const old = S.settings.lots || [];
-  const renames = new Map(old.map((o, i) => [o, slots[i]]).filter(([o, n]) => o && n && o !== n && !lots.includes(o)));
+  const renames = new Map(olds.map((o, i) => [o, slots[i]]).filter(([o, n]) => o && n && o !== n && !lots.includes(o)));
   // 消した駐車場に車が残っているときは確かめる（車の置き場所は、その名前のまま残る）
   const removed = old.filter(o => !lots.includes(o) && !renames.has(o));
   const left = S.vehicles.filter(v => !v.retired && (removed.includes(v.homeLot) || removed.includes(v.currentLot)));
@@ -2872,6 +2897,8 @@ document.addEventListener("click", e => {
     case "memImport": importFromNippo(); break;
     case "memToggle": toggleMember(id); break;
     case "memAdd": addMember(); break;
+    case "itemAdd": itemAdd(val); break;
+    case "itemDel": itemDel(el); break;
     case "retire": retireVehicle(modalId); break;
     case "restore": restoreVehicle(id); break;
     case "avail": break; // 預けられる日の欄（押しても車の修正画面を開かない）
@@ -2926,6 +2953,7 @@ document.addEventListener("input", e => {
 document.addEventListener("keydown", e => {
   if (e.key !== "Enter") return;
   if (/^ckadd-/.test(e.target.id)) { e.preventDefault(); addCheckItem(); }
+  if (e.target.id === "site-new" || e.target.id === "lot-new") { e.preventDefault(); itemAdd(e.target.id.split("-")[0]); }
 });
 document.addEventListener("change", e => {
   const el = e.target;

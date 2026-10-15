@@ -1005,3 +1005,13 @@ input[type="search"]::-webkit-search-decoration{-webkit-appearance:none}
   .ck-sheet-page{break-after:page;page-break-after:always}
   .ck-sheet-page:last-child{break-after:auto;page-break-after:auto}
 }
+/* 設定の「現場リスト」「駐車場」：1行ずつ（名前の欄と ×）＋「新しく追加」 */
+.ilist{max-height:300px;overflow:auto;border:1.5px solid var(--line);border-radius:12px;padding:4px 12px}
+.ilist:empty{display:none}
+.irow{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)}
+.irow:last-child{border-bottom:0}
+.irow input{flex:1;min-width:0}
+.irow .x{background:none;border:0;font-size:22px;line-height:1;color:var(--mute);min-width:40px;min-height:40px;cursor:pointer}
+.iadd{display:flex;gap:8px;margin-top:8px}
+.iadd input{flex:1;min-width:0}
+.iadd[hidden]{display:none}
